@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 bitrate='128k'
+version='0.1'
 
 def seekpos(filename,posname,defaultvalue):
     print("keys: h-1 j-10 u-60 i+60 k+10 l+1 ,-0.1 .+0.1 q-done")
@@ -94,6 +95,7 @@ def process_file(filename):
         os.remove(filename)
 
 if len(sys.argv)<2:
+    print("mp3crop.py version",version)
     print("Usage:",sys.argv[0],"filename - process one file")
     print("Usage:",sys.argv[0],"-a - process all *.mp3 files")
     exit()
