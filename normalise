@@ -1,0 +1,125 @@
+#!/usr/bin/bash
+
+# Normalise
+#
+# Normalise mp3 files (or others, but only tested with mp3!)
+#
+# Removes leading and trailing silence
+# Amplifies to leave peak at 0dB
+# Re-encodes at a new bitrate
+#
+# Usage:
+#   normalise <infile> <outfile> <bitrate> [<trimstart> <trimend> [<fadeout>]]
+#
+# e.g. : normalise raw.mp3 norm.mp3 128k
+#
+# Trimming: trimstart and trimend override the silence search and, instead,
+# force the audio to be trimmed so that everything before trimstart and
+# everything after trimend is removed.  Both parameters are specified in secs.
+#
+# If fadeout is specified in conjunction with trimming, fades out the last
+# <fadeout> seconds of the track.
+#
+
+#
+# Deal with command line args
+#
+infile=$1
+outfile=$2
+bitrate=$3
+trimstart=${4--1}	# default to -1
+trimend=${5--1}		# default to -1
+fadeout=${6--1}		# default to -1
+
+echo $trimstart
+echo $trimend
+if [ "$trimstart" != "-1" ] || [ "$trimend" != "-1" ]
+then
+  nosilencetrim=1
+  filterstring="volumedetect"
+else
+  nosilencetrim=0
+  filterstring="silencedetect=n=-40dB:d=0.5,volumedetect"
+fi
+
+echo $filterstring
+
+#
+# Run through filters to get some stream info
+#
+echo "Examining stream..."
+filterdata=$(ffmpeg -i "$infile" -af $filterstring -f null /dev/null 2>&1)
+
+#
+# Detect peak volume levels in each file
+#
+peakdb=$( echo "$filterdata" | grep max_volume | rev | cut -d" " -f2 | rev)
+echo "Peak dB: "$peakdb
+if [ $(echo "$peakdb<0" | bc -q ) == "1" ]
+then
+  amplify=$(echo $peakdb | cut -b2- )
+  echo "Amplifying by $amplify dB"
+  amplifyoptions='volume=volume='$amplify'dB'
+else
+  amplifyoptions=
+  echo "Not amplifying"
+fi
+
+#
+# Detect leading and trailing silence, below -40dB, of greater than 0.5s
+#
+if [ $nosilencetrim -ne "1" ]
+then
+  silence_firststart=$(echo "$filterdata" | grep "silence_start" | head -n1 | rev | cut -d" " -f1 | rev)
+  silence_firstend=$(echo "$filterdata" | grep "silence_end" | head -n1 | cut -d"|" -f1 | sed -e "s/\s*$//" | rev | cut -d" " -f1 | rev)
+  silence_laststart=$(echo "$filterdata" | grep "silence_start" | tail -n1 | rev | cut -d" " -f1 | rev)
+  silence_lastend=$(echo "$filterdata" | grep "silence_end" | tail -n1 | cut -d"|" -f1 | sed -e "s/\s*$//" | rev | cut -d" " -f1 | rev)
+  echo "Silence detection:"
+  echo "First Start: "$silence_firststart
+  echo "First   End: "$silence_firstend
+  echo "Last  Start: "$silence_laststart
+  echo "Last    End: "$silence_lastend
+  trimoptions=""
+  if [ $(echo "$silence_firststart<0" | bc -q) == "1" ]
+  then
+    echo "Trimming start to "$silence_firstend" seconds"
+    trimstart=$silence_firstend
+    trimoptions=" -ss $trimstart "
+  else
+    trimstart=0
+  fi
+  if [ $(echo "$silence_laststart>$silence_lastend" | bc -q) == "1" ]
+  then
+    echo "Trimming end to "$silence_laststart" seconds"
+    trimoptions="$trimoptions -t $(echo "$silence_laststart-$trimstart" | bc -q) "
+  fi
+else
+  trimoptions=" -ss $trimstart -t $(echo "$trimend-$trimstart" | bc -q) "
+fi
+echo "Trim options are: $trimoptions"
+
+if [ x"$amplifyoptions" == "x" ]
+then
+    filteroptions=
+else
+    filteroptions=$amplifyoptions
+fi
+
+if [ "$fadeout" != "-1" ]
+then
+  if [ x"$filteroptions" != "x" ]
+  then
+    filteroptions="$filteroptions,"
+  fi
+  filteroptions="$filteroptions""afade=t=out:st=$(echo "$trimend-$trimstart-$fadeout" | bc -q):d=$fadeout"
+fi
+if [ x"$filteroptions" != "x" ]
+then
+  filteroptions=" -af $filteroptions "
+fi
+
+#
+# Do the conversion
+#
+echo "ffmpeg $trimoptions -i \"$infile\" $filteroptions -b:a $bitrate -y \"$outfile\""
+ffmpeg $trimoptions -i "$infile" $filteroptions -b:a $bitrate -y "$outfile"
