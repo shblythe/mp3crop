@@ -40,7 +40,7 @@ def seekpos(filename,posname,defaultvalue):
             break
     return pos
 
-def process_file(filename):
+def processfile(filename):
     print("Use mplayer interface to preview file to determine filename:")
     getch()
     player=subprocess.call(
@@ -105,8 +105,8 @@ if sys.argv[1]=='-a':
     filelist.sort()
     for fn in filelist:
         print("*** FILE: ",fn)
-        process_file(fn)
+        processfile(fn)
 else:
-    process_file(sys.argv[1])
+    processfile(sys.argv[1])
 
 
