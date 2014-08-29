@@ -99,7 +99,9 @@ if len(sys.argv)<2:
     exit()
 
 if sys.argv[1]=='-a':
-    for fn in shutil.fnmatch.filter(os.listdir(),'*.mp3'):
+    filelist=shutil.fnmatch.filter(os.listdir(),'*.mp3')
+    filelist.sort()
+    for fn in filelist:
         print("*** FILE: ",fn)
         process_file(fn)
 else:
